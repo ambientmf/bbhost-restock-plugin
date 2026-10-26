@@ -129,7 +129,7 @@ The Bold Hunter's Mark trigger, in the Chalice Dungeons: vials 18 → 20 with st
 
 In every test, storage lost exactly what the inventory gained, the cap (20) held, and items already at the cap were left alone.
 
-The extras, on three Bold Hunter's Mark uses in the Chalice Dungeons (with screenshots of the inventory menu):
+The extras, on three Bold Hunter's Mark uses in the Chalice Dungeons. Screenshots of the inventory menu before and after each mark are in [`screenshots/2026-10-26-extras/`](screenshots/2026-10-26-extras/):
 
 | item | result |
 |---|---|
