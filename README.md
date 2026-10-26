@@ -2,14 +2,17 @@
 
 A [bbhost](https://github.com/droogie/bbhost) plugin for Bloodborne on PC. It refills your consumables from storage, so you don't have to die or go back to the Hunter's Dream to restock.
 
-- **Bold Hunter's Mark:** using one refills Blood Vials and Quicksilver Bullets from storage, exactly as a death does, plus the other consumables below.
-- **Death and the Hunter's Dream:** the game already refills vials and bullets there. The plugin also refills the other consumables at those moments.
+- **Bold Hunter's Mark:** using one refills Blood Vials, Quicksilver Bullets and the other consumables below from storage, exactly as a death does.
+- **Home from another world:** coming back from someone else's world as a cooperator or invader does the same. (Not yet tested.)
+- **Death and the Hunter's Dream:** the game already refills vials and bullets there; with the plugin it refills the other consumables too.
 
 Other consumables (option "Also other consumables", on by default): Antidote, Sedative, Beast Blood Pellet, Blue Elixir, Molotov Cocktail, Delayed Molotov, Rope Molotov Cocktail, Delayed Rope Molotov, Poison Knife, Throwing Knife, Oil Urn, Pebble, Numbing Mist, Fire Paper, Bolt Paper, Bone Marrow Ash, Shining Coins, Lead Elixir, Shaman Bone Blade.
 
 **It only moves what you already have.** Items come out of your storage, up to the normal carry limit, through the game's own storage transfer. It never adds items. With nothing in storage, nothing happens. Buy or farm your stock as usual. The plain Hunter's Mark (which costs your echoes), the Bold Hunter's Mark itself, special bloods, Insight items, story items and coldbloods are never touched.
 
 How it works: [`docs/findings.md`](docs/findings.md).
+
+**Online:** Restock changes the game, so bbhost announces it in your session's online rules. With it on, you only meet players who also run Restock (summons, invasions, messages and bloodstains), never vanilla players. Turn it off and restart bbhost to play with everyone. bbhost's log shows the active rules at startup: `plugin: this session's online rules (X-BBHost-Ruleset): restock`. See bbhost's plugin docs, "Online rules".
 
 **Status: in testing.** The Bold Hunter's Mark restock is tested, for vials, bullets and the other consumables. The death/Dream restock of the other consumables is built but untested. Online play (cooperators, invaders, matchmaking) is untested.
 
@@ -22,7 +25,7 @@ Not released yet. When it is:
 
 Requires Bloodborne 1.09 and bbhost with plugin API 9 or newer.
 
-Options (bbhost menu, or `[restock]` in `bbhost.toml`): `on_mark` (restock on a Bold Hunter's Mark), `extras` (the other consumables) and `notify` (off by default: a message listing what moved, for testing; the game itself shows none). All take effect at once. The plugin logs every restock, item by item, to `plugins/restock/restock.log` in bbhost's data folder.
+Options (bbhost menu, or `[restock]` in `bbhost.toml`): `on_mark` (restock on a Bold Hunter's Mark), `on_return` (on coming home from another world), `extras` (the other consumables) and `notify` (off by default: a message listing what moved, for testing; the game itself shows none). All take effect at once. The plugin logs every restock, item by item, to `plugins/restock/restock.log` in bbhost's data folder.
 
 ## License
 

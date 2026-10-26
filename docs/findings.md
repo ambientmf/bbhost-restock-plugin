@@ -4,8 +4,9 @@ How the game restocks from storage, and where the plugin steps in. The engine ad
 
 ## What the plugin does
 
-1. **Bold Hunter's Mark:** when you use one, it calls the game's own restock, which refills Blood Vials and Quicksilver Bullets from storage exactly as a death does. Then it does the same for the extra consumables listed below.
-2. **Death and the Hunter's Dream:** the game already calls its restock there, for vials and bullets only. A hook on the restock's entry also restocks the extra consumables, so they follow the game's own rules for *when* to restock.
+1. **The extra consumables** (listed below) are marked `isAutoReplenish` in `EquipParamGoods`, through bbhost's `param_set`. The game's own restock then refills them along with vials and bullets, wherever it runs: on death and in the Hunter's Dream (the game's own triggers), and when the plugin calls it.
+2. **Bold Hunter's Mark:** when you use one, the plugin calls the game's restock, exactly as a death does.
+3. **Home from another world:** when you come back from another player's world as a cooperator or invader, the plugin calls the game's restock. (Built; not yet tested.)
 
 It does nothing else. Nothing is restocked at any other time, and the plain Hunter's Mark (which forfeits echoes) is ignored. There's no button to restock on demand: an early test button was removed because it would be easy to abuse.
 
@@ -48,22 +49,15 @@ The game calls the restock from one place: the routine that places the player in
 
 A second routine walks the inventory and tops up "supply items" (`isSuppleItem` / `isFullSuppleItem`) to a limit **without touching storage**, swapping some for their replacement item. It's reached through what looks like a script command. It creates items, so the plugin must never use it.
 
-## The plugin's extras restock
+## The extras: one param flag
 
-The same loop as the game's, with the plugin's item list in place of the param flag, through the same two helpers:
+The game's restock refills whatever is flagged `isAutoReplenish`, so the plugin flags the extras and lets the game do the rest: storage counts, carry caps and the move itself are all the game's own. The plugin sets the flag when `EquipParamGoods` has loaded, again on every world load (in case the game reloaded the table), and puts back the game's own values when the `extras` option is turned off.
 
-```c
-void restock_extras(Inventory* storage, Inventory* inv) {
-    for (uint32_t slot = 0; slot <= last_slot(storage); slot++) {
-        uint32_t item = resolve_item(entry(storage, slot)->handle);
-        if (!in_extras_list(item)) continue;   /* the only difference from the game's loop */
-        int n = how_many_fit(inv, &item, entry(storage, slot)->qty);
-        if (n > 0) storage_transfer(slot, storage, inv, n);
-    }
-}
-```
+An earlier version ran its own copy of the game's loop, filtered by the plugin's item list, from a hook on the restock's entry. Setting the flag does the same with no hook and two fewer engine functions (the how-many-fit helper and the storage transfer).
 
-The hook sits on the game's restock entry, runs `restock_extras`, and returns without skipping, so the game's restock then runs unchanged. When the plugin itself calls the restock (after a Bold Hunter's Mark), a flag tells the hook to stand aside, and the plugin runs the extras once afterwards.
+## Detecting a return from another world
+
+bbhost's `chr_list` gives the main player's multiplayer class (`chr_type`): 0 in your own world, another value as a phantom in someone else's. Going to another player's world is itself a world load, so the plugin reads it at each load and logs it. A load at 0 right after a load as a phantom is a return home, and the plugin restocks. Nothing runs between loads. If the game turns out to set the phantom class only after bbhost reports the load, the log will show 0 there, and the check needs to wait a moment after the load. The phantom classes' values aren't known yet; the log will show them.
 
 ## Detecting a Bold Hunter's Mark
 
@@ -100,8 +94,9 @@ Left out on purpose:
 
 ## Open questions
 
-- **Online:** the plugin is flagged `BB_PLUGIN_GAMEPLAY`, so bbhost adds it to the session's ruleset. Does that keep its players from matching (summons, invasions) with players who don't run it? Untested: no one was online to match with.
-- Does the game also restock when a cooperator or invader returns to their own world? If so, the hook covers that case too. Untested, same reason.
+- ~~**Online:** does the gameplay flag keep its players from matching with players who don't run it?~~ Yes. bbhost's docs (plugins, "Online rules") say a gameplay plugin is announced with every request (`X-BBHost-Ruleset`) and players only meet others with the same rules. Confirmed in practice: the bbhost log of a session with Restock on read `this session's online rules (X-BBHost-Ruleset): restock`, and no one could be matched that night.
+- The ruleset is self-declared: any DLL can call itself `restock`. Only bbhost's signed official plugins are verified (Ed25519 `.sig`, `signed_only`), and the docs don't say the server checks signatures when matching. A trustworthy online pool needs Restock upstreamed as a signed official plugin, and possibly bbhost's agreement that a plugin which only moves the player's own items can share a pool with vanilla players.
+- Does the game itself restock when a cooperator or invader returns home? The plugin restocks then either way (harmless if the game already did: nothing is left to move). Untested.
 - The spawn routine's other conditions for restocking aren't identified; "after a death" is assumed, not yet confirmed.
 - A routine that runs just before the restock at spawn looks up goods 901; not read yet.
 
@@ -141,10 +136,19 @@ The extras, on three Bold Hunter's Mark uses in the Chalice Dungeons. Screenshot
 
 No item was given for free. The tester checked this in game, and the log shows it: an item with nothing in storage was never refilled (Numbing Mist), an item stopped refilling once its storage ran out (Fire Paper), and a short supply moved only what was left (Rope Molotov). Storage lost exactly what the inventory gained for every item, each item's own cap held (10 for most, 3 for Shaman Bone Blade), and the menu matched the log (Rope Molotov: 6 held / 2 stored before, 8 / 0 after). Blood Echoes were unchanged across the marks.
 
-Not yet exercised: the hook on death and in the Dream (expect a `game restock (death, the Dream, ...): extras` block in `restock.log`).
+Death and the Dream were later tested with the param flag (below), which replaced the plugin's own loop and hook.
+
+### The param flag, as a data mod (2026-10-26)
+
+To test whether the flag alone is enough, a bbhost param override (`<mods>/params/EquipParamGoods.toml`, `row.<id>.isAutoReplenish = 1` for the 19 extras) was used, with the plugin's own extras restock off:
+
+- bbhost applied it on top of a whole-file param mod that was also installed: `EquipParamGoods.toml applied, 19 fields over 19 rows`.
+- Death: Antidote 7 → 10, storage 16 → 13. Hunter's Dream: Antidote 9 → 10, storage 13 → 12. Bold Hunter's Mark (the plugin calling the game's restock): Sedative 9 → 10, storage 9 → 8.
+- An item with nothing in storage stayed short.
+- The session's online rules listed only the plugin: **bbhost doesn't announce param overrides online.** A data-only Restock would be matched with vanilla players while the game behaves differently, so it isn't shipped that way. The plugin sets the same flag and is announced.
 
 ## Plan from here
 
-1. Test the death/Dream hook in game (the extras themselves are tested).
+1. Test the 0.1.0 plugin in game: the extras through the flag (death, Dream, mark), and the return from another world as a cooperator and as an invader (and note the logged `chr_type` values).
 2. Online: cooperator/invader return, and matchmaking with the plugin on.
 3. Read the goods-901 routine at spawn, and the storage transfer's other callers (likely the storage menu).

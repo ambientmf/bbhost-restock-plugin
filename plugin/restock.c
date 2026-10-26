@@ -1,27 +1,25 @@
-/* restock: a bbhost plugin that refills blood vials and quicksilver bullets
- * from storage when the player uses a Bold Hunter's Mark, the way the game
- * already does on death, and also the consumables the game never refills
- * (papers, molotovs, knives, ...: EXTRAS).
+/* restock: a bbhost plugin that refills consumables from storage when the
+ * player uses a Bold Hunter's Mark or comes home from another player's world,
+ * the way the game already does on death and in the Hunter's Dream.
  *
- * It never creates items: everything goes through the game's own
- * storage-to-inventory transfer, which moves only what storage holds, up to
- * the carry cap.
+ * Two parts:
  *
- * The engine addresses are the #defines below; docs/findings.md describes
- * what each function does and how that was established.
+ * - The extras (papers, molotovs, knives, ...: EXTRAS) are marked
+ *   EquipParamGoods.isAutoReplenish, through bbhost's param_set. The game's
+ *   own restock (RESTOCK) then refills them along with vials and bullets,
+ *   wherever it runs: on death, in the Dream, and when this plugin calls it.
+ * - Triggers the game lacks: on each world load, if the inventory holds fewer
+ *   Bold Hunter's Marks than at the last load, one was used; if the player was
+ *   a phantom (chr_type != 0) at the last load and is home again (0), they came
+ *   back from another world. Either way the plugin calls RESTOCK.
  *
- * Death and the Hunter's Dream: the game calls its restock (RESTOCK) then;
- * a hook on its entry runs the extras too, so they follow the game's own
- * rules for when to restock.
+ * It never creates items: the game's restock moves only what storage holds,
+ * up to each item's carry cap. Only the Bold mark: the plain Hunter's Mark
+ * (which forfeits your echoes) is left alone on purpose.
  *
- * Bold Hunter's Mark: on each world load (a warp, a death, a lamp), if the
- * inventory holds fewer marks than at the last load, one was used, so it
- * calls the restock. It also logs every goods item used up between loads,
- * which is how BOLD_HUNTERS_MARK was found. Only the Bold mark: the plain
- * Hunter's Mark (which forfeits your echoes) is left alone on purpose.
- *
- * All addresses are Binary Ninja addresses of the 1.09 eboot (image base
- * 0x400000).
+ * The engine addresses are the #defines below (Binary Ninja addresses of the
+ * 1.09 eboot, image base 0x400000); docs/findings.md describes what each
+ * function does and how that was established.
  *
  * Copyright (C) 2026 ambientmf
  *
@@ -38,62 +36,75 @@
 static const BbHostApi* api;
 static FILE* out;
 static int on_mark = 1;
+static int on_return = 1;
 static int extras = 1;
 static int notify; /* show what moved on screen: off by default, for testing */
-static int in_restock; /* restock() is calling RESTOCK: the hook leaves the extras to it */
 
-/* docs/findings.md. */
 #define GAME_DATA_MAN 0x593b130u    /* GameDataMan*; the local player's data at +8 */
 #define PLAYER_INVENTORY 0x328u     /* PlayerGameData + 0x328: the inventory */
 #define PLAYER_STORAGE 0x5b0u       /* PlayerGameData + 0x5b0: Inventory* storage */
 #define RESOLVE_ITEM 0x1e89070u     /* {u32 handle, u64 0, u32 item out} */
 #define RESTOCK 0x18dace0u          /* restock_from_storage(void) */
-#define CAN_MOVE 0x18d9a80u         /* (Inventory* dst, u32* item, int available) -> how many fit */
-#define TRANSFER 0x18da750u         /* (int src_slot, Inventory* src, Inventory* dst, int n) */
 #define GOODS 0x40000000u
 /* The Bold Hunter's Mark goods id, from restock.log: the one item used up
  * between loads when a mark was used (39 -> 38 -> 37). */
 #define BOLD_HUNTERS_MARK 1400u
 
-/* Consumables the game's restock skips, restocked the same way. Goods ids
- * from bloodborne-wiki.com (Datamined Item IDs; the DLC molotovs from
+/* Consumables the game's restock skips unless marked auto-replenish. Goods
+ * ids from bloodborne-wiki.com (Datamined Item IDs; the DLC molotovs from
  * Datamined Internal Names). Left out on purpose: the Bold Hunter's Mark,
  * the special bloods, Insight items, story items, coldbloods. */
-static const struct {
+static struct {
     uint32_t id;
     const char* name;
+    char orig[8]; /* isAutoReplenish as the game had it; "" until read */
 } EXTRAS[] = {
-    {1100, "Antidote"},
-    {1101, "Sedative"},
-    {1110, "Beast Blood Pellet"},
-    {1120, "Blue Elixir"},
-    {1200, "Molotov Cocktail"},
-    {1201, "Delayed Molotov"},
-    {1210, "Poison Knife"},
-    {1220, "Oil Urn"},
-    {1230, "Pebble"},
-    {1240, "Throwing Knife"},
-    {1250, "Rope Molotov Cocktail"},
-    {1251, "Delayed Rope Molotov"},
-    {1270, "Numbing Mist"},
-    {1300, "Fire Paper"},
-    {1320, "Bolt Paper"},
-    {1330, "Bone Marrow Ash"},
-    {1410, "Shining Coins"},
-    {2030, "Lead Elixir"},
-    {2090, "Shaman Bone Blade"},
+    {1100, "Antidote", ""},
+    {1101, "Sedative", ""},
+    {1110, "Beast Blood Pellet", ""},
+    {1120, "Blue Elixir", ""},
+    {1200, "Molotov Cocktail", ""},
+    {1201, "Delayed Molotov", ""},
+    {1210, "Poison Knife", ""},
+    {1220, "Oil Urn", ""},
+    {1230, "Pebble", ""},
+    {1240, "Throwing Knife", ""},
+    {1250, "Rope Molotov Cocktail", ""},
+    {1251, "Delayed Rope Molotov", ""},
+    {1270, "Numbing Mist", ""},
+    {1300, "Fire Paper", ""},
+    {1320, "Bolt Paper", ""},
+    {1330, "Bone Marrow Ash", ""},
+    {1410, "Shining Coins", ""},
+    {2030, "Lead Elixir", ""},
+    {2090, "Shaman Bone Blade", ""},
 };
+#define N_EXTRAS (sizeof(EXTRAS) / sizeof(EXTRAS[0]))
 
-static const char* extra_name(uint32_t id) {
-    for (size_t i = 0; i < sizeof(EXTRAS) / sizeof(EXTRAS[0]); i++)
-        if (id == (GOODS | EXTRAS[i].id)) return EXTRAS[i].name;
-    return NULL;
+/* Marks the extras auto-replenish (on) or puts back the game's own values
+ * (off). Returns 0 until EquipParamGoods has loaded. Called again on every
+ * world load, in case the game reloaded the table. */
+static int flags_set;
+
+static int apply_flags(int on) {
+    int changed = 0;
+    for (size_t i = 0; i < N_EXTRAS; i++) {
+        if (!EXTRAS[i].orig[0] && api->param_get("EquipParamGoods", EXTRAS[i].id, "isAutoReplenish", EXTRAS[i].orig, sizeof(EXTRAS[i].orig)) != 0) {
+            EXTRAS[i].orig[0] = 0;
+            return 0;
+        }
+        if (api->param_set("EquipParamGoods", EXTRAS[i].id, "isAutoReplenish", on ? "1" : EXTRAS[i].orig) == 0) changed++;
+    }
+    if (out && !flags_set) fprintf(out, "extras %s: isAutoReplenish set on %d of %d rows\n", on ? "on" : "off", changed, (int)N_EXTRAS);
+    return 1;
 }
 
 static const char* item_name(uint32_t id) {
     if (id == (GOODS | 1000u)) return "Blood Vial";
     if (id == (GOODS | 900u)) return "Quicksilver Bullets";
-    return extra_name(id);
+    for (size_t i = 0; i < N_EXTRAS; i++)
+        if (id == (GOODS | EXTRAS[i].id)) return EXTRAS[i].name;
+    return NULL;
 }
 
 /* What a restock moved, for the on-screen message: "Blood Vial +1, ...". */
@@ -145,9 +156,9 @@ static uint32_t resolve(uint32_t handle) {
     return api->call_guest(RESOLVE_ITEM, &regs) == 0 ? r.item : 0xffffffffu;
 }
 
-/* Goods totals in an inventory-layout container: 16-byte entries {handle, ?,
- * qty at +8, ?}, the first *(+0x24) at *(+0x58), the rest at *(+0x48), highest
- * index at +0x88. */
+/* Goods totals in an inventory-layout container (bbhost's boss_rush documents
+ * the layout): 16-byte entries {handle, ?, qty at +8, ?}, the first *(+0x24)
+ * at *(+0x58), the rest at *(+0x48), highest index at +0x88. */
 static void snapshot(const uint8_t* c, Snapshot* s) {
     s->n = 0;
     if (!c) return;
@@ -205,117 +216,76 @@ static int report(const Snapshot* inv0, const Snapshot* inv1, const Snapshot* st
     return bad;
 }
 
-/* The game's restock loop (RESTOCK) with EXTRAS as the filter instead of
- * isAutoReplenish: for each storage slot holding one, move what fits. */
-static void restock_extras(uint8_t* storage, uint8_t* inv) {
-    for (uint32_t i = 0; i <= *(const uint32_t*)(storage + 0x88) && *(const uint32_t*)(storage + 0x88) != 0xffffffffu; i++) {
-        uint32_t first = *(const uint32_t*)(storage + 0x24);
-        const uint8_t* e = i < first ? *(uint8_t* const*)(storage + 0x58) + i * 16 : *(uint8_t* const*)(storage + 0x48) + (i - first) * 16;
-        if (!e || !*(const uint32_t*)e) continue;
-        uint32_t item = resolve(*(const uint32_t*)e);
-        if (!extra_name(item)) continue;
-        BbCallRegs regs;
-        memset(&regs, 0, sizeof(regs));
-        regs.arg[0] = (uint64_t)inv;
-        regs.arg[1] = (uint64_t)&item;
-        regs.arg[2] = (uint64_t)(uint32_t)*(const int32_t*)(e + 8);
-        if (api->call_guest(CAN_MOVE, &regs) != 0) continue;
-        int32_t n = (int32_t)regs.ret;
-        if (n <= 0) continue;
-        memset(&regs, 0, sizeof(regs));
-        regs.arg[0] = i;
-        regs.arg[1] = (uint64_t)storage;
-        regs.arg[2] = (uint64_t)inv;
-        regs.arg[3] = (uint64_t)n;
-        api->call_guest(TRANSFER, &regs);
-    }
-}
-
-/* Calls the game's restock (and the extras') and logs what moved. `why` names the caller.
- * Returns the number of items moved, or -1 with no player or storage. */
-static int restock(const char* why, int* bad) {
+/* Calls the game's restock and logs what moved. `why` names the trigger. */
+static void restock(const char* why) {
     static Snapshot inv0, inv1, st0, st1;
     uint8_t* p = player_data();
     uint8_t* storage = p ? *(uint8_t**)(p + PLAYER_STORAGE) : NULL;
-    *bad = 0;
     if (!p || !storage) {
         if (out) fprintf(out, "%s: no player data (%p) or storage (%p)\n", why, (void*)p, (void*)storage);
-        return -1;
+        return;
     }
     uint8_t* inv = p + PLAYER_INVENTORY;
     snapshot(inv, &inv0);
     snapshot(storage, &st0);
     BbCallRegs regs;
     memset(&regs, 0, sizeof(regs));
-    in_restock = 1;
     int rc = api->call_guest(RESTOCK, &regs);
-    in_restock = 0;
-    if (extras) restock_extras(storage, inv);
     snapshot(inv, &inv1);
     snapshot(storage, &st1);
     if (out) fprintf(out, "%s: call_guest(restock) = %d; %d/%d goods in inventory, %d/%d in storage (before/after)\n", why, rc, inv0.n, inv1.n, st0.n, st1.n);
     int moved;
-    *bad = report(&inv0, &inv1, &st0, &st1, &moved);
-    if (out) fflush(out);
-    return moved;
-}
-
-/* Entry of the game's restock, as the game calls it (death, the Dream): run
- * the extras first; then the game's own restock runs as usual. */
-static const uint8_t RESTOCK_PROLOGUE[17] = {
-    0x55,                   /* push rbp */
-    0x48, 0x89, 0xe5,       /* mov rbp, rsp */
-    0x41, 0x57, 0x41, 0x56, /* push r15; push r14 */
-    0x41, 0x55, 0x41, 0x54, /* push r13; push r12 */
-    0x53,                   /* push rbx */
-    0x48, 0x83, 0xec, 0x38, /* sub rsp, 0x38 */
-};
-
-static int on_game_restock(BbHookCtx* ctx, void* user) {
-    static Snapshot inv0, inv1, st0, st1;
-    (void)ctx;
-    (void)user;
-    if (in_restock || !extras) return 0;
-    uint8_t* p = player_data();
-    uint8_t* storage = p ? *(uint8_t**)(p + PLAYER_STORAGE) : NULL;
-    if (!p || !storage) return 0;
-    uint8_t* inv = p + PLAYER_INVENTORY;
-    snapshot(inv, &inv0);
-    snapshot(storage, &st0);
-    restock_extras(storage, inv);
-    snapshot(inv, &inv1);
-    snapshot(storage, &st1);
-    if (out) fprintf(out, "game restock (death, the Dream, ...): extras\n");
-    int moved;
     report(&inv0, &inv1, &st0, &st1, &moved);
-    show_moved();
+    if (moved > 0) show_moved();
     if (out) fflush(out);
-    return 0;
 }
 
-/* The inventory's goods at the last world load, to spot a used mark. */
+/* The main player's multiplayer class: 0 at home, another value as a phantom
+ * in someone else's world. -1 when there is no player. */
+static int32_t player_chr_type(void) {
+    BbChr chrs[64];
+    size_t n = 0;
+    if (api->chr_list(chrs, 64, &n) != 0) return -1;
+    if (n > 64) n = 64;
+    for (size_t i = 0; i < n; i++)
+        if (chrs[i].is_player) return chrs[i].chr_type;
+    return -1;
+}
+
+/* Sets the extras' flags once EquipParamGoods has loaded (it loads during the
+ * boot), then stops doing anything. */
+static void on_frame(void* user) {
+    (void)user;
+    if (!flags_set && extras) flags_set = apply_flags(1);
+}
+
+/* The inventory's goods and the player's chr_type at the last world load, to
+ * spot a used mark and a return from another world. */
 static Snapshot last_load;
 static int have_last_load;
+static int32_t last_chr_type = -1;
 
 static void on_world_load(uint32_t block, void* user) {
     static Snapshot now;
     (void)user;
+    if (extras) apply_flags(1);
     uint8_t* p = player_data();
     if (!p) return;
     snapshot(p + PLAYER_INVENTORY, &now);
     int mark_used = 0;
     if (have_last_load) {
-        for (int k = 0; k < last_load.n; k++) {
-            uint32_t id = last_load.c[k].id;
-            int32_t before = last_load.c[k].qty, after = qty_of(&now, id);
-            if (after >= before) continue;
-            if (out) fprintf(out, "load %08x: goods %u used since the last load (%d -> %d)\n", block, id & 0x0fffffffu, before, after);
-            if (BOLD_HUNTERS_MARK && id == (GOODS | BOLD_HUNTERS_MARK)) mark_used = 1;
+        int32_t before = qty_of(&last_load, GOODS | BOLD_HUNTERS_MARK), after = qty_of(&now, GOODS | BOLD_HUNTERS_MARK);
+        if (after < before) {
+            mark_used = 1;
+            if (out) fprintf(out, "load %08x: Bold Hunter's Mark used (%d -> %d)\n", block, before, after);
         }
     }
-    if (mark_used && on_mark) {
-        int bad;
-        if (restock("bold hunter's mark", &bad) > 0) show_moved();
+    int32_t t = player_chr_type();
+    int returned = last_chr_type > 0 && t == 0;
+    if (out) fprintf(out, "load %08x: chr_type %d%s\n", block, t, returned ? ", home from another world" : "");
+    last_chr_type = t;
+    if ((mark_used && on_mark) || (returned && on_return)) {
+        restock(mark_used ? "bold hunter's mark" : "home from another world");
         snapshot(p + PLAYER_INVENTORY, &now);
     }
     last_load = now;
@@ -325,24 +295,31 @@ static void on_world_load(uint32_t block, void* user) {
 
 static void on_option(const char* key, const char* value, void* user) {
     (void)user;
-    if (strcmp(key, "on_mark") == 0) on_mark = value && strcmp(value, "true") == 0;
-    if (strcmp(key, "extras") == 0) extras = value && strcmp(value, "true") == 0;
-    if (strcmp(key, "notify") == 0) notify = value && strcmp(value, "true") == 0;
-    if (out) fprintf(out, "option %s = %s\n", key, value ? value : "");
+    int on = value && strcmp(value, "true") == 0;
+    if (strcmp(key, "on_mark") == 0) on_mark = on;
+    if (strcmp(key, "on_return") == 0) on_return = on;
+    if (strcmp(key, "notify") == 0) notify = on;
+    if (strcmp(key, "extras") == 0 && on != extras) {
+        extras = on;
+        flags_set = 0;
+        flags_set = apply_flags(on);
+    }
+    if (out) fprintf(out, "option %s = %s\n", key, value ? value : ""), fflush(out);
 }
 
 /* Opt-in and gameplay: it changes the player's items, so bbhost puts it in
- * the session's ruleset. How that affects summons and invasions is an open
- * question (docs/findings.md). */
+ * the session's online rules: players with it on only meet each other. */
 BB_PLUGIN_EXPORT const BbPluginInfo bb_plugin_info = {
-    BB_PLUGIN_API_VERSION, BB_PLUGIN_OPT_IN | BB_PLUGIN_GAMEPLAY, "restock", "Restock", "0.0.1", "ambientmf",
-    "Refills vials, bullets and other consumables from storage: on a Bold Hunter's Mark, and the others whenever the game restocks vials (death, the Dream)."};
+    BB_PLUGIN_API_VERSION, BB_PLUGIN_OPT_IN | BB_PLUGIN_GAMEPLAY, "restock", "Restock", "0.1.0", "ambientmf",
+    "Refills vials, bullets and other consumables from storage after a Bold Hunter's Mark or a return from another world, and the other consumables also on death and in the Dream."};
 
 BB_PLUGIN_EXPORT const BbOption bb_plugin_options[] = {
     {BB_OPT_BOOL | BB_OPT_LIVE, "on_mark", "Restock on Bold Hunter's Mark",
-     "refill vials and bullets from storage after the mark warps you", "true", 0, 0, 0},
+     "refill from storage after the mark warps you", "true", 0, 0, 0},
+    {BB_OPT_BOOL | BB_OPT_LIVE, "on_return", "Restock on return from another world",
+     "refill from storage when you come home as a cooperator or invader", "true", 0, 0, 0},
     {BB_OPT_BOOL | BB_OPT_LIVE, "extras", "Also other consumables",
-     "papers, molotovs, knives, pellets, Blue Elixir, Numbing Mist, Shining Coins, ...: on a mark, a death and in the Dream", "true", 0, 0, 0},
+     "papers, molotovs, knives, pellets, Blue Elixir, Numbing Mist, Shining Coins, ...: whenever the game restocks vials", "true", 0, 0, 0},
     {BB_OPT_BOOL | BB_OPT_LIVE, "notify", "Show what was restocked",
      "a message listing what moved from storage (for testing; the game itself shows none)", "false", 0, 0, 0},
     {0, 0, 0, 0, 0, 0, 0, 0}};
@@ -354,15 +331,13 @@ BB_PLUGIN_EXPORT int bb_plugin_image(const BbHostApi* host) {
     snprintf(path, sizeof(path), "%s/restock.log", api->plugin_dir("restock"));
     out = fopen(path, "a");
     on_mark = strcmp(api->config("restock.on_mark"), "false") != 0;
+    on_return = strcmp(api->config("restock.on_return"), "false") != 0;
     extras = strcmp(api->config("restock.extras"), "false") != 0;
     notify = strcmp(api->config("restock.notify"), "true") == 0;
-    if (out) fprintf(out, "== start: on_mark=%d extras=%d notify=%d\n", on_mark, extras, notify);
+    if (out) fprintf(out, "== start 0.1.0: on_mark=%d on_return=%d extras=%d notify=%d\n", on_mark, on_return, extras, notify);
     api->on_option("restock", on_option, NULL);
     api->on_world_load(on_world_load, NULL);
-    if (api->hook2(RESTOCK, RESTOCK_PROLOGUE, sizeof(RESTOCK_PROLOGUE), on_game_restock, NULL) != 0) {
-        api->log("restock: could not hook the game's restock; extras only on a Bold Hunter's Mark");
-        if (out) fprintf(out, "hook on %x failed\n", RESTOCK);
-    }
+    api->on_frame(on_frame, NULL);
     api->log("restock: loaded");
     return 0;
 }
