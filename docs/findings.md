@@ -113,8 +113,8 @@ Left out on purpose:
 
 ## Open questions
 
-- ~~**Online:** does the gameplay flag keep its players from matching with players who don't run it?~~ Yes. bbhost's docs (plugins, "Online rules") say a gameplay plugin is announced with every request (`X-BBHost-Ruleset`) and players only meet others with the same rules. Confirmed in practice: the bbhost log of a session with Restock on read `this session's online rules (X-BBHost-Ruleset): restock`, and no one could be matched that night.
-- The ruleset is self-declared: any DLL can call itself `restock`. Only bbhost's signed official plugins are verified (Ed25519 `.sig`, `signed_only`), and the docs don't say the server checks signatures when matching. A trustworthy online pool needs Restock upstreamed as a signed official plugin, and possibly bbhost's agreement that a plugin which only moves the player's own items can share a pool with vanilla players.
+- ~~**Online:** does the gameplay flag keep its players from matching with players who don't run it?~~ Yes. bbhost's docs (plugins, "Online rules") say a gameplay plugin is announced with every request (`X-BBHost-Ruleset`) and players only meet others with the same rules. bbhost's log shows the rules at startup; with Restock on it reads `this session's online rules (X-BBHost-Ruleset): restock`.
+- The ruleset is self-declared: any DLL can call itself `restock`. Only bbhost's signed official plugins are verified (Ed25519 `.sig`, `signed_only`), and the docs don't say the server checks signatures when matching.
 - Does the game itself restock when a cooperator or invader returns home? The plugin restocks then either way (harmless if the game already did: nothing is left to move). Untested.
 - The spawn routine's other conditions for restocking aren't identified; "after a death" is assumed, not yet confirmed.
 - A routine that runs just before the restock at spawn looks up goods 901; not read yet.

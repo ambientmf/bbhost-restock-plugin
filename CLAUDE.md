@@ -27,8 +27,6 @@ The plugin must never create items. It only moves consumables the player owns fr
 
 ## Documentation standard
 
-The plugin is meant to go upstream into bbhost, where gameplay plugins get extra scrutiny, so everything it does must be reviewable:
-
 - Docs never list engine addresses, offsets or call sites, and never restate reverse engineering bbhost already documents (point to `include/bbhost/` instead). The addresses the plugin needs live only in `plugin/restock.c`'s `#define`s. Describe functions by role.
 - `docs/findings.md` starts with the current state: what the plugin does, why it never creates items, and the item list with sources.
 - Record in-game tests with their numbers from `restock.log` (inventory and storage, before and after).
