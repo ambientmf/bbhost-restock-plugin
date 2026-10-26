@@ -8,10 +8,12 @@
  *   EquipParamGoods.isAutoReplenish, through bbhost's param_set. The game's
  *   own restock (RESTOCK) then refills them along with vials and bullets,
  *   wherever it runs: on death, in the Dream, and when this plugin calls it.
- * - Triggers the game lacks: on each world load, if the inventory holds fewer
- *   Bold Hunter's Marks than at the last load, one was used; if the player was
- *   a phantom (chr_type != 0) at the last load and is home again (0), they came
- *   back from another world. Either way the plugin calls RESTOCK.
+ * - Triggers the game lacks, acted on at the next world load: using a Bold
+ *   Hunter's Mark applies special effect MARK_SP_EFFECT to the player, which a
+ *   hook on the game's effect insert watches for (discarding or storing a mark
+ *   applies nothing); and a load at chr_type 0 straight after
+ *   one as a phantom is a return from another world. Either way the plugin
+ *   calls RESTOCK.
  *
  * It never creates items: the game's restock moves only what storage holds,
  * up to each item's carry cap. Only the Bold mark: the plain Hunter's Mark
@@ -49,6 +51,16 @@ static int notify; /* show what moved on screen: off by default, for testing */
 /* The Bold Hunter's Mark goods id, from restock.log: the one item used up
  * between loads when a mark was used (39 -> 38 -> 37). */
 #define BOLD_HUNTERS_MARK 1400u
+/* Using a Bold Hunter's Mark applies this SpEffectParam row to the player
+ * (EquipParamGoods 1400: refCategory 2, refId 2101); the plain Hunter's Mark
+ * applies 2100. */
+#define MARK_SP_EFFECT 2101u
+/* The game's effect insert-or-refresh, as bbhost's SDK names it
+ * (bbhost/engine/sprj/sp_effect.hpp): (effect list, effect id, ...). The
+ * list's owner, the character, is at +0x18. A mark's effect arrives here, not
+ * through the character wrapper or the eligibility-and-insert (logged). */
+#define SP_EFFECT_INSERT_OR_REFRESH 0x1be3130u
+#define SP_EFFECT_LIST_OWNER 0x18u
 
 /* Consumables the game's restock skips unless marked auto-replenish. Goods
  * ids from bloodborne-wiki.com (Datamined Item IDs; the DLC molotovs from
@@ -252,11 +264,49 @@ static int32_t player_chr_type(void) {
     return -1;
 }
 
+static void* player_ins(void) {
+    BbChr chrs[64];
+    size_t n = 0;
+    if (api->chr_list(chrs, 64, &n) != 0) return NULL;
+    if (n > 64) n = 64;
+    for (size_t i = 0; i < n; i++)
+        if (chrs[i].is_player) return chrs[i].ins;
+    return NULL;
+}
+
+/* The insert runs for every effect the game applies, so the hook only notes
+ * a MARK_SP_EFFECT; on_frame checks it was the player's. */
+static volatile uint64_t mark_effect_list; /* the list a mark's effect went to; 0 none */
+static int mark_used;                      /* a mark's effect hit the player since the last load */
+
+static int on_effect_insert(BbHookCtx* ctx, void* user) {
+    (void)user;
+    if ((uint32_t)ctx->arg[1] == MARK_SP_EFFECT) mark_effect_list = ctx->arg[0];
+    return 0;
+}
+
+static const uint8_t INSERT_PROLOGUE[17] = {
+    0x55,                   /* push rbp */
+    0x48, 0x89, 0xe5,       /* mov rbp, rsp */
+    0x41, 0x57, 0x41, 0x56, /* push r15; push r14 */
+    0x41, 0x55, 0x41, 0x54, /* push r13; push r12 */
+    0x53,                   /* push rbx */
+    0x48, 0x83, 0xec, 0x78, /* sub rsp, 0x78 */
+};
+
 /* Sets the extras' flags once EquipParamGoods has loaded (it loads during the
- * boot), then stops doing anything. */
+ * boot), and checks whether a mark's effect the hooks noted was the player's. */
 static void on_frame(void* user) {
     (void)user;
     if (!flags_set && extras) flags_set = apply_flags(1);
+    uint64_t list = mark_effect_list, owner = 0;
+    if (!list) return;
+    mark_effect_list = 0;
+    void* ins = player_ins();
+    api->read(list + SP_EFFECT_LIST_OWNER, &owner, sizeof(owner));
+    int mine = ins && owner == (uint64_t)ins;
+    if (mine) mark_used = 1;
+    if (out) fprintf(out, "effect %u on %s\n", MARK_SP_EFFECT, mine ? "the player: a mark was used" : "another character"), fflush(out);
 }
 
 /* The inventory's goods and the player's chr_type at the last world load, to
@@ -272,20 +322,21 @@ static void on_world_load(uint32_t block, void* user) {
     uint8_t* p = player_data();
     if (!p) return;
     snapshot(p + PLAYER_INVENTORY, &now);
-    int mark_used = 0;
+    /* The mark count is only a logged cross-check: a discard or a deposit
+     * also lowers it, and a pickup can hide a use. */
     if (have_last_load) {
         int32_t before = qty_of(&last_load, GOODS | BOLD_HUNTERS_MARK), after = qty_of(&now, GOODS | BOLD_HUNTERS_MARK);
-        if (after < before) {
-            mark_used = 1;
-            if (out) fprintf(out, "load %08x: Bold Hunter's Mark used (%d -> %d)\n", block, before, after);
-        }
+        if (after != before && out) fprintf(out, "load %08x: Bold Hunter's Marks %d -> %d\n", block, before, after);
     }
+    int used = mark_used;
+    mark_used = 0;
+    if (used && out) fprintf(out, "load %08x: a Bold Hunter's Mark was used\n", block);
     int32_t t = player_chr_type();
     int returned = last_chr_type > 0 && t == 0;
     if (out) fprintf(out, "load %08x: chr_type %d%s\n", block, t, returned ? ", home from another world" : "");
     last_chr_type = t;
-    if ((mark_used && on_mark) || (returned && on_return)) {
-        restock(mark_used ? "bold hunter's mark" : "home from another world");
+    if ((used && on_mark) || (returned && on_return)) {
+        restock(used ? "bold hunter's mark" : "home from another world");
         snapshot(p + PLAYER_INVENTORY, &now);
     }
     last_load = now;
@@ -338,6 +389,10 @@ BB_PLUGIN_EXPORT int bb_plugin_image(const BbHostApi* host) {
     api->on_option("restock", on_option, NULL);
     api->on_world_load(on_world_load, NULL);
     api->on_frame(on_frame, NULL);
+    if (api->hook2(SP_EFFECT_INSERT_OR_REFRESH, INSERT_PROLOGUE, sizeof(INSERT_PROLOGUE), on_effect_insert, NULL) != 0) {
+        api->log("restock: could not hook the effect insert; no restock on a Bold Hunter's Mark");
+        if (out) fprintf(out, "effect hook FAILED\n");
+    }
     api->log("restock: loaded");
     return 0;
 }

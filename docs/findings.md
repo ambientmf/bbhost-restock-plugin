@@ -61,12 +61,31 @@ bbhost's `chr_list` gives the main player's multiplayer class (`chr_type`): 0 in
 
 ## Detecting a Bold Hunter's Mark
 
-No hook needed. bbhost's `on_world_load` fires on every placement in a map (warp, death, lamp, load). The plugin keeps the inventory's goods counts from the last load. If the Bold Hunter's Mark count dropped, a mark was used, and it restocks.
+Using a Bold Hunter's Mark applies a special effect to the player: its `EquipParamGoods` row (goods 1400) has `refCategory` 2 (special effect) and `refId` 2101. `SpEffectParam` 2101 is an instant effect with `stateInfo` 16, presumably the warp to the last lamp. The plain Hunter's Mark (goods 100) applies a different effect, 2100. Discarding or storing a mark applies no effect at all.
 
-- **The Bold Hunter's Mark is goods 1400.** The plugin's "used since the last load" log found it: the only item that dropped by one per mark use (39 → 38 → 37). The wiki's item id table agrees.
-- **A Hunter's Dream nuance:** a mark that lands in the Dream is restocked by the game itself, through the Dream case above. Only marks that land elsewhere need the plugin. Restocking there too is harmless: nothing is left to move.
+So the plugin hooks the game's effect insert-or-refresh, one of the apply-effect functions bbhost's SDK documents (`bbhost/engine/sprj/sp_effect.hpp`). The hook only notes a call carrying effect 2101, since the insert runs for every effect the game applies. On the next frame the plugin checks that the effect list it went to belongs to the main player. The restock then happens at the next world load: the warp the mark causes.
+
+```c
+/* The hook: runs for every effect inserted. */
+int on_effect_insert(EffectList* list, uint32_t effect_id, ...) {
+    if (effect_id == 2101) mark_effect_list = list;
+    return 0;   /* let the game's insert run unchanged */
+}
+
+/* Next frame, on the main thread. */
+if (mark_effect_list && owner(mark_effect_list) == main_player()) mark_used = 1;
+
+/* Next world load. */
+if (mark_used) { mark_used = 0; restock(); }
+```
+
+- **The Bold Hunter's Mark is goods 1400.** It was found from the plugin's log of items used up between loads: the only item that dropped by one per mark use (39 → 38 → 37). The wiki's item id table agrees.
+- **Which function the effect takes:** the first test hooked all three apply-effect functions bbhost names (the character wrapper, eligibility-and-insert, insert-or-refresh) and logged which saw effect 2101. Only insert-or-refresh did, with the id as its second argument and the player's effect list as its first. The plugin now hooks only that one.
+- **Why not count the marks:** an earlier version restocked when the inventory held fewer marks than at the last load. A discard (`isDrop` is set on the mark) also lowers the count, so discarding a mark and reloading restocked in place, skipping the warp. A mark picked up and then used between loads leaves the count unchanged, so that use was missed. The count is still logged as a cross-check.
+- **Tested 2026-10-26:** two mark uses each logged the effect on the player and restocked (Blood Vial 19 → 20 with storage 170 → 169; Antidote and Sedative 9 → 10). Two discards followed by a reload lowered the count (29 → 28 → 27) with no effect and no restock. The plain Hunter's Mark didn't restock.
+- **Retested with the single hook:** a mark use logged the effect on the player and restocked (Blood Vial, Sedative and Quicksilver Bullets +1 each, storage −1 each). A discard plus reload lowered the count (25 → 24) without a restock. Death and the Dream refilled through the game. A mark with nothing missing that storage could fill moved nothing.
+- **A Hunter's Dream nuance:** a mark that lands in the Dream is restocked by the game itself, through the Dream case above. Restocking there too is harmless: nothing is left to move.
 - **Not covered, on purpose:** the plain Hunter's Mark. It forfeits all held Blood Echoes (the Bold one keeps them).
-- Switching characters can compare against the previous character's baseline and restock once. That still only moves the new character's own storage.
 
 ## The extra consumables
 
