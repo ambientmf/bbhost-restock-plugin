@@ -129,10 +129,22 @@ The Bold Hunter's Mark trigger, in the Chalice Dungeons: vials 18 → 20 with st
 
 In every test, storage lost exactly what the inventory gained, the cap (20) held, and items already at the cap were left alone.
 
-Built, not yet tested: the extras (each item's cap), and the hook on death and in the Dream (expect a `game restock (death, the Dream, ...): extras` block in `restock.log`).
+The extras, on three Bold Hunter's Mark uses in the Chalice Dungeons (with screenshots of the inventory menu):
+
+| item | result |
+|---|---|
+| Antidote, Sedative | 9 → 10 on each mark; storage down one each time (19 → 16, 12 → 9) |
+| Fire Paper | 9 → 10 with storage 1 → 0; after that it stayed short, with nothing in storage |
+| Rope Molotov Cocktail | 9 → 10 twice, then 6 → 8 with storage 2 → 0: a partial refill, all there was |
+| Shaman Bone Blade | 2 → 3 with storage 3 → 2: topped up to its cap of 3, though none was used |
+| Numbing Mist | used each time (8 → 5), never refilled: none in storage |
+
+No item was given for free. The tester checked this in game, and the log shows it: an item with nothing in storage was never refilled (Numbing Mist), an item stopped refilling once its storage ran out (Fire Paper), and a short supply moved only what was left (Rope Molotov). Storage lost exactly what the inventory gained for every item, each item's own cap held (10 for most, 3 for Shaman Bone Blade), and the menu matched the log (Rope Molotov: 6 held / 2 stored before, 8 / 0 after). Blood Echoes were unchanged across the marks.
+
+Not yet exercised: the hook on death and in the Dream (expect a `game restock (death, the Dream, ...): extras` block in `restock.log`).
 
 ## Plan from here
 
-1. Test the extras and the death/Dream hook in game.
+1. Test the death/Dream hook in game (the extras themselves are tested).
 2. Online: cooperator/invader return, and matchmaking with the plugin on.
 3. Read the goods-901 routine at spawn, and the storage transfer's other callers (likely the storage menu).

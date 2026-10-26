@@ -39,6 +39,7 @@ static const BbHostApi* api;
 static FILE* out;
 static int on_mark = 1;
 static int extras = 1;
+static int notify; /* show what moved on screen: off by default, for testing */
 static int in_restock; /* restock() is calling RESTOCK: the hook leaves the extras to it */
 
 /* docs/findings.md. */
@@ -87,6 +88,35 @@ static const char* extra_name(uint32_t id) {
     for (size_t i = 0; i < sizeof(EXTRAS) / sizeof(EXTRAS[0]); i++)
         if (id == (GOODS | EXTRAS[i].id)) return EXTRAS[i].name;
     return NULL;
+}
+
+static const char* item_name(uint32_t id) {
+    if (id == (GOODS | 1000u)) return "Blood Vial";
+    if (id == (GOODS | 900u)) return "Quicksilver Bullets";
+    return extra_name(id);
+}
+
+/* What a restock moved, for the on-screen message: "Blood Vial +1, ...". */
+static char moved_text[256];
+
+static void note_moved(uint32_t id, int32_t n) {
+    char part[64];
+    const char* name = item_name(id);
+    if (name)
+        snprintf(part, sizeof(part), "%s%s +%d", moved_text[0] ? ", " : "", name, n);
+    else
+        snprintf(part, sizeof(part), "%sgoods %u +%d", moved_text[0] ? ", " : "", id & 0x0fffffffu, n);
+    if (strlen(moved_text) + strlen(part) < sizeof(moved_text) - 4)
+        strcat(moved_text, part);
+    else if (!strstr(moved_text, "..."))
+        strcat(moved_text, ", ...");
+}
+
+static void show_moved(void) {
+    char msg[300];
+    if (!notify || !moved_text[0]) return;
+    snprintf(msg, sizeof(msg), "Restocked from storage: %s", moved_text);
+    api->show_message(msg, 5.0f);
 }
 
 typedef struct {
@@ -151,6 +181,7 @@ static int report(const Snapshot* inv0, const Snapshot* inv1, const Snapshot* st
     uint32_t seen[4096];
     int nseen = 0, bad = 0;
     *moved = 0;
+    moved_text[0] = 0;
     for (int a = 0; a < 4; a++)
         for (int k = 0; k < all[a]->n; k++) {
             uint32_t id = all[a]->c[k].id;
@@ -161,9 +192,12 @@ static int report(const Snapshot* inv0, const Snapshot* inv1, const Snapshot* st
             int32_t di = qty_of(inv1, id) - qty_of(inv0, id), ds = qty_of(st1, id) - qty_of(st0, id);
             if (!di && !ds) continue;
             if (di != -ds) bad++;
-            if (di > 0) *moved += di;
+            if (di > 0) {
+                *moved += di;
+                note_moved(id, di);
+            }
             if (out) {
-                const char* name = extra_name(id);
+                const char* name = item_name(id);
                 fprintf(out, "  goods %u%s%s: inventory %d -> %d, storage %d -> %d%s\n", id & 0x0fffffffu, name ? " " : "", name ? name : "",
                         qty_of(inv0, id), qty_of(inv1, id), qty_of(st0, id), qty_of(st1, id), di != -ds ? "  ** MISMATCH **" : "");
             }
@@ -254,6 +288,7 @@ static int on_game_restock(BbHookCtx* ctx, void* user) {
     if (out) fprintf(out, "game restock (death, the Dream, ...): extras\n");
     int moved;
     report(&inv0, &inv1, &st0, &st1, &moved);
+    show_moved();
     if (out) fflush(out);
     return 0;
 }
@@ -279,12 +314,8 @@ static void on_world_load(uint32_t block, void* user) {
         }
     }
     if (mark_used && on_mark) {
-        int bad, moved = restock("bold hunter's mark", &bad);
-        if (moved > 0) {
-            char msg[96];
-            snprintf(msg, sizeof(msg), "Restocked %d from storage", moved);
-            api->show_message(msg, 3.0f);
-        }
+        int bad;
+        if (restock("bold hunter's mark", &bad) > 0) show_moved();
         snapshot(p + PLAYER_INVENTORY, &now);
     }
     last_load = now;
@@ -296,6 +327,7 @@ static void on_option(const char* key, const char* value, void* user) {
     (void)user;
     if (strcmp(key, "on_mark") == 0) on_mark = value && strcmp(value, "true") == 0;
     if (strcmp(key, "extras") == 0) extras = value && strcmp(value, "true") == 0;
+    if (strcmp(key, "notify") == 0) notify = value && strcmp(value, "true") == 0;
     if (out) fprintf(out, "option %s = %s\n", key, value ? value : "");
 }
 
@@ -311,6 +343,8 @@ BB_PLUGIN_EXPORT const BbOption bb_plugin_options[] = {
      "refill vials and bullets from storage after the mark warps you", "true", 0, 0, 0},
     {BB_OPT_BOOL | BB_OPT_LIVE, "extras", "Also other consumables",
      "papers, molotovs, knives, pellets, Blue Elixir, Numbing Mist, Shining Coins, ...: on a mark, a death and in the Dream", "true", 0, 0, 0},
+    {BB_OPT_BOOL | BB_OPT_LIVE, "notify", "Show what was restocked",
+     "a message listing what moved from storage (for testing; the game itself shows none)", "false", 0, 0, 0},
     {0, 0, 0, 0, 0, 0, 0, 0}};
 
 BB_PLUGIN_EXPORT int bb_plugin_image(const BbHostApi* host) {
@@ -321,7 +355,8 @@ BB_PLUGIN_EXPORT int bb_plugin_image(const BbHostApi* host) {
     out = fopen(path, "a");
     on_mark = strcmp(api->config("restock.on_mark"), "false") != 0;
     extras = strcmp(api->config("restock.extras"), "false") != 0;
-    if (out) fprintf(out, "== start: on_mark=%d extras=%d\n", on_mark, extras);
+    notify = strcmp(api->config("restock.notify"), "true") == 0;
+    if (out) fprintf(out, "== start: on_mark=%d extras=%d notify=%d\n", on_mark, extras, notify);
     api->on_option("restock", on_option, NULL);
     api->on_world_load(on_world_load, NULL);
     if (api->hook2(RESTOCK, RESTOCK_PROLOGUE, sizeof(RESTOCK_PROLOGUE), on_game_restock, NULL) != 0) {

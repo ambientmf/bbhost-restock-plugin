@@ -11,7 +11,7 @@ Other consumables (option "Also other consumables", on by default): Antidote, Se
 
 How it works: [`docs/findings.md`](docs/findings.md).
 
-**Status: in testing.** The Bold Hunter's Mark restock of vials and bullets is tested; the other consumables and the death/Dream restock are built but untested. Online play (cooperators, invaders, matchmaking) is untested.
+**Status: in testing.** The Bold Hunter's Mark restock is tested, for vials, bullets and the other consumables. The death/Dream restock of the other consumables is built but untested. Online play (cooperators, invaders, matchmaking) is untested.
 
 ## Install
 
@@ -22,7 +22,7 @@ Not released yet. When it is:
 
 Requires Bloodborne 1.09 and bbhost with plugin API 9 or newer.
 
-Options (bbhost menu, or `[restock]` in `bbhost.toml`): `on_mark` (restock on a Bold Hunter's Mark) and `extras` (the other consumables). Both take effect at once. The plugin logs every restock, item by item, to `plugins/restock/restock.log` in bbhost's data folder.
+Options (bbhost menu, or `[restock]` in `bbhost.toml`): `on_mark` (restock on a Bold Hunter's Mark), `extras` (the other consumables) and `notify` (off by default: a message listing what moved, for testing; the game itself shows none). All take effect at once. The plugin logs every restock, item by item, to `plugins/restock/restock.log` in bbhost's data folder.
 
 ## License
 
