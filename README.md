@@ -18,6 +18,8 @@ How it works: [`docs/findings.md`](docs/findings.md).
 
 ## Install
 
+**Back up your saves.** This plugin may contain bugs or unintended side effects.
+
 1. Download `restock.dll` from the [latest release](https://github.com/ambientmf/bbhost-restock-plugin/releases/latest).
 2. Put `restock.dll` in the `plugins` folder next to the bbhost executable.
 3. Turn it on in the launcher's Plugins tab or the in-game plugin menu (F9). It's opt-in.
