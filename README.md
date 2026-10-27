@@ -3,7 +3,7 @@
 A [bbhost](https://github.com/droogie/bbhost) plugin for Bloodborne on PC. It refills your consumables from storage, so you don't have to die or go back to the Hunter's Dream to restock.
 
 - **Bold Hunter's Mark:** using one refills Blood Vials, Quicksilver Bullets and the other consumables below from storage, exactly as a death does.
-- **Home from another world:** coming back from someone else's world as a cooperator or invader does the same. (Not yet tested.)
+- **Home from another world:** coming back from someone else's world as a cooperator or invader does the same.
 - **Death and the Hunter's Dream:** the game already refills vials and bullets there; with the plugin it refills the other consumables too.
 
 Other consumables (option "Also other consumables", on by default): Antidote, Sedative, Beast Blood Pellet, Blue Elixir, Molotov Cocktail, Delayed Molotov, Rope Molotov Cocktail, Delayed Rope Molotov, Poison Knife, Throwing Knife, Oil Urn, Pebble, Numbing Mist, Fire Paper, Bolt Paper, Bone Marrow Ash, Shining Coins, Lead Elixir, Shaman Bone Blade.
@@ -14,7 +14,7 @@ How it works: [`docs/findings.md`](docs/findings.md).
 
 **Online:** Restock doesn't flag itself as a gameplay plugin, so bbhost leaves it out of your session's online rules and you meet players with or without it. It never creates items and only saves a trip, which a death or the Hunter's Dream gives anyone. bbhost's log shows the active rules at startup (`plugin: this session's online rules (X-BBHost-Ruleset)`); Restock isn't listed there. See bbhost's plugin docs, "Online rules".
 
-**Status: in testing.** The Bold Hunter's Mark restock is tested, for vials, bullets and the other consumables. The death/Dream restock of the other consumables is built but untested. Online play (cooperators, invaders, matchmaking) is untested.
+**Status: in testing.** Tested in game: the Bold Hunter's Mark restock, the death and Dream restock of the other consumables, and coming home as a cooperator and as an invader, with matchmaking against players who don't run Restock.
 
 ## Install
 

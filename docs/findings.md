@@ -6,7 +6,7 @@ How the game restocks from storage, and where the plugin steps in. The engine ad
 
 1. **The extra consumables** (listed below) are marked `isAutoReplenish` in `EquipParamGoods`, through bbhost's `param_set`. The game's own restock then refills them along with vials and bullets, wherever it runs: on death and in the Hunter's Dream (the game's own triggers), and when the plugin calls it.
 2. **Bold Hunter's Mark:** when you use one, the plugin calls the game's restock, exactly as a death does.
-3. **Home from another world:** when you come back from another player's world as a cooperator or invader, the plugin calls the game's restock. (Built; not yet tested.)
+3. **Home from another world:** when you come back from another player's world as a cooperator or invader, the plugin calls the game's restock. (Tested as a cooperator and as an invader.)
 
 It does nothing else. Nothing is restocked at any other time, and the plain Hunter's Mark (which forfeits echoes) is ignored. There's no button to restock on demand: an early test button was removed because it would be easy to abuse.
 
@@ -57,7 +57,7 @@ An earlier version ran its own copy of the game's loop, filtered by the plugin's
 
 ## Detecting a return from another world
 
-bbhost's `chr_list` gives the main player's multiplayer class (`chr_type`): 0 in your own world, another value as a phantom in someone else's. Going to another player's world is itself a world load, so the plugin reads it at each load and logs it. A load at 0 right after a load as a phantom is a return home, and the plugin restocks. Nothing runs between loads. If the game turns out to set the phantom class only after bbhost reports the load, the log will show 0 there, and the check needs to wait a moment after the load. The phantom classes' values aren't known yet; the log will show them.
+bbhost's `chr_list` gives the main player's multiplayer class (`chr_type`): 0 in your own world, another value as a phantom in someone else's. Going to another player's world is itself a world load, so the plugin reads it at each load and logs it. A load at 0 right after a load as a phantom is a return home, and the plugin restocks. Nothing runs between loads. The class is already set when bbhost reports the load into the host's world: the log showed 1 as a cooperator and 2 as an invader. The plugin doesn't depend on those values, only on "not 0, then 0".
 
 ## Detecting a Bold Hunter's Mark
 
@@ -115,7 +115,7 @@ Left out on purpose:
 
 - ~~**Online:** does the gameplay flag keep its players from matching with players who don't run it?~~ Yes. bbhost's docs (plugins, "Online rules") say a gameplay plugin is announced with every request (`X-BBHost-Ruleset`) and players only meet others with the same rules. With the flag, bbhost's log read `this session's online rules (X-BBHost-Ruleset): restock`.
 - The plugin no longer sets the gameplay flag. It never creates items, and everything it moves the game would move on the next death or Dream visit, so it isn't announced and its players meet everyone. The flag is self-declared: bbhost reads it from the plugin and doesn't check it.
-- Does the game itself restock when a cooperator or invader returns home? The plugin restocks then either way (harmless if the game already did: nothing is left to move). Untested.
+- ~~Does the game itself restock when a phantom returns home?~~ Not before the plugin's check: on both invader returns to a Chalice Dungeon, items were still short at the load, and the plugin's restock moved them. Coming home to the Hunter's Dream, the plugin found nothing short; that run can't tell whether the Dream's own restock ran first.
 - The spawn routine's other conditions for restocking aren't identified; "after a death" is assumed, not yet confirmed.
 - A routine that runs just before the restock at spawn looks up goods 901; not read yet.
 
@@ -166,8 +166,29 @@ To test whether the flag alone is enough, a bbhost param override (`<mods>/param
 - An item with nothing in storage stayed short.
 - The session's online rules listed only the plugin: **bbhost doesn't announce param overrides online.** The plugin sets the same flag at runtime, and is not announced either (see Open questions).
 
+### Return home, online (2026-10-26)
+
+With the gameplay flag dropped, bbhost's log read `this session's online rules (X-BBHost-Ruleset): vanilla`, and the tester was summoned and invaded with players who don't run Restock.
+
+As a cooperator in a host's Chalice Dungeon, summoned from the Hunter's Dream: the log read `chr_type 1` in the host's world, then `chr_type 0, home from another world` back in the Dream. The plugin's restock moved nothing; nothing was short.
+
+As an invader (the second invader in a host's modded Chalice Dungeon, with bbhost's five-players enhancement on), coming home to the tester's own Chalice Dungeon, twice:
+
+| item | first return (inventory, storage) | second return (inventory, storage) |
+|---|---|---|
+| Blood Vial | 18 → 20, 495 → 493 | 18 → 20, 493 → 491 |
+| Quicksilver Bullets | 18 → 20, 395 → 393 | 18 → 20, 393 → 391 |
+| Fire Paper | 9 → 10, 93 → 92 | 9 → 10, 92 → 91 |
+| Rope Molotov Cocktail | 9 → 10, 79 → 78 | 9 → 10, 78 → 77 |
+| Pebble | 19 → 20, 78 → 77 | 19 → 20, 77 → 76 |
+| Sedative | unchanged | 9 → 10, 14 → 13 |
+
+The log read `chr_type 2` in the host's world each time. Each return restocked once, storage lost exactly what the inventory gained, and the caps held. Screenshots of the second return, from the host's death ("It is time to bid farewell") to the refill at home, are in [`screenshots/2026-10-26-return/`](screenshots/2026-10-26-return/): vials and bullets 18 before, 20 after, Pebble 19 → 20, and the restock message listing the same items as the log.
+
+### With bbhost's rebirth enhancement (2026-10-26)
+
+Asked by a player: does Restock clash with bbhost's rebirth (respec at the Altar of Despair)? In one session in the Altar's map, in this order: a Bold Hunter's Mark restock (Blood Vial 19 → 20, Beast Blood Pellet 9 → 10, Bolt Paper 9 → 10, Quicksilver Bullets 16 → 20, storage down by the same), a rebirth from level 120 to 10 (bbhost's log: `3500130 blood echoes given back`), a second rebirth (10 to 10), then another mark restock (Blood Vial 19 → 20, Bolt Paper 8 → 10, Quicksilver Bullets 19 → 20). The rebirth kept its effect, as the tester confirmed in game, and both restocks behaved as before. Screenshots in [`screenshots/2026-10-26-rebirth/`](screenshots/2026-10-26-rebirth/): the level-up menu rebuilding the character from level 10 after the rebirth, the second Bold Hunter's Mark ("Do you wish to reawaken?", 86 marks, vials and bullets at 19), its restock message (Blood Vial +1, Bolt Paper +2, Quicksilver Bullets +1), and the stats after the mark: the rebuilt allocation (Vitality 48, Bloodtinge 42, Arcane 6) still in place and Blood Echoes unchanged by the mark (34612519).
+
 ## Plan from here
 
-1. Test the 0.1.0 plugin in game: the extras through the flag (death, Dream, mark), and the return from another world as a cooperator and as an invader (and note the logged `chr_type` values).
-2. Online: cooperator/invader return, and matchmaking with the plugin on.
-3. Read the goods-901 routine at spawn, and the storage transfer's other callers (likely the storage menu).
+1. Read the goods-901 routine at spawn, and the storage transfer's other callers (likely the storage menu).
