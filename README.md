@@ -14,14 +14,13 @@ How it works: [`docs/findings.md`](docs/findings.md).
 
 **Online:** Restock doesn't flag itself as a gameplay plugin, so bbhost leaves it out of your session's online rules and you meet players with or without it. It never creates items and only saves a trip, which a death or the Hunter's Dream gives anyone. bbhost's log shows the active rules at startup (`plugin: this session's online rules (X-BBHost-Ruleset)`); Restock isn't listed there. See bbhost's plugin docs, "Online rules".
 
-**Status: in testing.** Tested in game: the Bold Hunter's Mark restock, the death and Dream restock of the other consumables, and coming home as a cooperator and as an invader, with matchmaking against players who don't run Restock.
+**Tested in game:** the Bold Hunter's Mark restock, the death and Dream restock of the other consumables, and coming home as a cooperator and as an invader, with matchmaking against players who don't run Restock, and alongside bbhost's rebirth (respec) at the Altar of Despair. Tested with bbhost 0.2.20 and 0.2.21.
 
 ## Install
 
-Not released yet. When it is:
-
-1. Put `restock.dll` in the `plugins` folder next to the bbhost executable.
-2. Turn it on in the launcher's Plugins tab or the in-game plugin menu (F9). It's opt-in.
+1. Download `restock.dll` from the [latest release](https://github.com/ambientmf/bbhost-restock-plugin/releases/latest).
+2. Put `restock.dll` in the `plugins` folder next to the bbhost executable.
+3. Turn it on in the launcher's Plugins tab or the in-game plugin menu (F9). It's opt-in.
 
 Requires Bloodborne 1.09 and bbhost with plugin API 9 or newer.
 
