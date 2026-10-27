@@ -1,0 +1,48 @@
+# Game files: never commit copyrighted content
+game/
+dump/
+CUSA*/
+eboot.bin
+*.elf
+*.self
+*.prx
+*.sprx
+*.dcx
+*.bnd
+*.bdt
+*.bhd
+*.pkg
+
+# Saves
+saves/
+savedata/
+userdata*
+
+# Ghidra project databases
+ghidra/
+*.gpr
+*.rep/
+*.lock
+*.lock~
+
+# Debugger / Cheat Engine artifacts
+*.CT
+x64dbg/
+*.dd64
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS / editors
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+*.Zone.Identifier
+
+captures/
+
+# Build output
+build/
