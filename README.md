@@ -10,6 +10,10 @@ Other consumables (option "Also other consumables", on by default): Antidote, Se
 
 **It only moves what you already have.** Items come out of your storage, up to the normal carry limit, through the game's own storage transfer. It never adds items. With nothing in storage, nothing happens. Buy or farm your stock as usual. The plain Hunter's Mark (which costs your echoes), the Bold Hunter's Mark itself, special bloods, Insight items, story items and coldbloods are never touched.
 
+![Back home after an invasion: vials and bullets refilled to 20 from storage](docs/screenshots/2026-10-26-return/vlcsnap-2026-10-26-23h15m05s428.png)
+
+*Home after an invasion, refilled from storage. The message at the top is the optional `notify` setting, off by default.*
+
 How it works: [`docs/findings.md`](docs/findings.md).
 
 **Online:** Restock doesn't flag itself as a gameplay plugin, so bbhost leaves it out of your session's online rules and you meet players with or without it. It never creates items and only saves a trip, which a death or the Hunter's Dream gives anyone. bbhost's log shows the active rules at startup (`plugin: this session's online rules (X-BBHost-Ruleset)`); Restock isn't listed there. See bbhost's plugin docs, "Online rules".
