@@ -113,8 +113,8 @@ Left out on purpose:
 
 ## Open questions
 
-- ~~**Online:** does the gameplay flag keep its players from matching with players who don't run it?~~ Yes. bbhost's docs (plugins, "Online rules") say a gameplay plugin is announced with every request (`X-BBHost-Ruleset`) and players only meet others with the same rules. bbhost's log shows the rules at startup; with Restock on it reads `this session's online rules (X-BBHost-Ruleset): restock`.
-- The ruleset is self-declared: any DLL can call itself `restock`. Only bbhost's signed official plugins are verified (Ed25519 `.sig`, `signed_only`), and the docs don't say the server checks signatures when matching.
+- ~~**Online:** does the gameplay flag keep its players from matching with players who don't run it?~~ Yes. bbhost's docs (plugins, "Online rules") say a gameplay plugin is announced with every request (`X-BBHost-Ruleset`) and players only meet others with the same rules. With the flag, bbhost's log read `this session's online rules (X-BBHost-Ruleset): restock`.
+- The plugin no longer sets the gameplay flag. It never creates items, and everything it moves the game would move on the next death or Dream visit, so it isn't announced and its players meet everyone. The flag is self-declared: bbhost reads it from the plugin and doesn't check it.
 - Does the game itself restock when a cooperator or invader returns home? The plugin restocks then either way (harmless if the game already did: nothing is left to move). Untested.
 - The spawn routine's other conditions for restocking aren't identified; "after a death" is assumed, not yet confirmed.
 - A routine that runs just before the restock at spawn looks up goods 901; not read yet.
@@ -164,7 +164,7 @@ To test whether the flag alone is enough, a bbhost param override (`<mods>/param
 - bbhost applied it on top of a whole-file param mod that was also installed: `EquipParamGoods.toml applied, 19 fields over 19 rows`.
 - Death: Antidote 7 → 10, storage 16 → 13. Hunter's Dream: Antidote 9 → 10, storage 13 → 12. Bold Hunter's Mark (the plugin calling the game's restock): Sedative 9 → 10, storage 9 → 8.
 - An item with nothing in storage stayed short.
-- The session's online rules listed only the plugin: **bbhost doesn't announce param overrides online.** A data-only Restock would be matched with vanilla players while the game behaves differently, so it isn't shipped that way. The plugin sets the same flag and is announced.
+- The session's online rules listed only the plugin: **bbhost doesn't announce param overrides online.** The plugin sets the same flag at runtime, and is not announced either (see Open questions).
 
 ## Plan from here
 

@@ -358,10 +358,11 @@ static void on_option(const char* key, const char* value, void* user) {
     if (out) fprintf(out, "option %s = %s\n", key, value ? value : ""), fflush(out);
 }
 
-/* Opt-in and gameplay: it changes the player's items, so bbhost puts it in
- * the session's online rules: players with it on only meet each other. */
+/* Opt-in, not gameplay: it never creates items and only does what a death or
+ * a trip to the Hunter's Dream does, so it stays out of the session's online
+ * rules and its players meet everyone. */
 BB_PLUGIN_EXPORT const BbPluginInfo bb_plugin_info = {
-    BB_PLUGIN_API_VERSION, BB_PLUGIN_OPT_IN | BB_PLUGIN_GAMEPLAY, "restock", "Restock", "0.1.0", "ambientmf",
+    BB_PLUGIN_API_VERSION, BB_PLUGIN_OPT_IN, "restock", "Restock", "0.1.0", "ambientmf",
     "Refills vials, bullets and other consumables from storage after a Bold Hunter's Mark or a return from another world, and the other consumables also on death and in the Dream."};
 
 BB_PLUGIN_EXPORT const BbOption bb_plugin_options[] = {

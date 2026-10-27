@@ -12,7 +12,7 @@ Other consumables (option "Also other consumables", on by default): Antidote, Se
 
 How it works: [`docs/findings.md`](docs/findings.md).
 
-**Online:** Restock changes the game, so bbhost announces it in your session's online rules. With it on, you only meet players who also run Restock (summons, invasions, messages and bloodstains), never vanilla players. Turn it off and restart bbhost to play with everyone. bbhost's log shows the active rules at startup: `plugin: this session's online rules (X-BBHost-Ruleset): restock`. See bbhost's plugin docs, "Online rules".
+**Online:** Restock doesn't flag itself as a gameplay plugin, so bbhost leaves it out of your session's online rules and you meet players with or without it. It never creates items and only saves a trip, which a death or the Hunter's Dream gives anyone. bbhost's log shows the active rules at startup (`plugin: this session's online rules (X-BBHost-Ruleset)`); Restock isn't listed there. See bbhost's plugin docs, "Online rules".
 
 **Status: in testing.** The Bold Hunter's Mark restock is tested, for vials, bullets and the other consumables. The death/Dream restock of the other consumables is built but untested. Online play (cooperators, invaders, matchmaking) is untested.
 
@@ -21,7 +21,7 @@ How it works: [`docs/findings.md`](docs/findings.md).
 Not released yet. When it is:
 
 1. Put `restock.dll` in the `plugins` folder next to the bbhost executable.
-2. Turn it on in the launcher's Plugins tab or the in-game plugin menu (F9). It's opt-in, because it changes gameplay.
+2. Turn it on in the launcher's Plugins tab or the in-game plugin menu (F9). It's opt-in.
 
 Requires Bloodborne 1.09 and bbhost with plugin API 9 or newer.
 
